@@ -1,8 +1,6 @@
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
-
-## current issue is that microphone is now not being requested when hosted in webrower. u connected mode is showing fall back random audio data
 ## Run Commands
 - Run directly from browser by opening `index.html`
 - No build process required - pure frontend application

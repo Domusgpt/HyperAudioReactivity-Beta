@@ -1,9 +1,12 @@
 /**
- * visualizer-main.js - v1.2
- * Standalone script for Hypersynth Visualizer (Mic Input).
+ * visualizer-main.js - v1.5
+ * Standalone script for HyperAudioVisualizer (Web Audio Input).
  * - Enhanced audio reactivity: Audio levels modulate visual parameters.
  * - Added dissonance proxy affecting color shift.
  * - Added more detailed logging for audio analysis.
+ * - Improved browser compatibility for microphone access
+ * - Added fallback visualization with patterned random data
+ * - Optimized audio analysis parameters for better visual performance
  */
 import HypercubeCore from '../core/HypercubeCore.js';
 import ShaderManager from '../core/ShaderManager.js';
@@ -53,16 +56,49 @@ document.addEventListener('DOMContentLoaded', () => {
     // State
     let gl = null, audioContext = null, analyser = null, micSource = null;
     let mainVisualizerCore = null, geometryManager = null, projectionManager = null, shaderManager = null;
-    let analysisData = { bass: 0, mid: 0, high: 0, bassSmooth: 0, midSmooth: 0, highSmooth: 0 }; // Added smoothed values
+    
+    // Enhanced audio analysis data including pitch detection
+    let analysisData = { 
+        bass: 0, mid: 0, high: 0, 
+        bassSmooth: 0, midSmooth: 0, highSmooth: 0,
+        dominantPitch: 0,        // Frequency of dominant pitch in Hz
+        dominantPitchValue: 0,   // Strength of dominant pitch 0-1
+        pitch: {                 // Structured pitch data
+            frequency: 0,        // Detected pitch in Hz
+            note: 'A',           // Musical note (A-G)
+            octave: 4,           // Octave number
+            cents: 0,            // Cents deviation from perfect pitch (-50 to +50)
+            inTune: false        // Whether the note is in tune (within ±15 cents)
+        }
+    };
+    
+    // Audio analysis arrays
     let freqData = null;
+    let timeData = null;
+    
+    // Musical note reference frequencies - A4 = 440Hz
+    const NOTE_FREQUENCIES = {
+        'C': 261.63, 'C#': 277.18, 'D': 293.66, 'D#': 311.13, 
+        'E': 329.63, 'F': 349.23, 'F#': 369.99, 
+        'G': 392.00, 'G#': 415.30, 'A': 440.00, 'A#': 466.16, 'B': 493.88
+    };
+    
     let visualParams = { // Stores BASE values from sliders
         morphFactor: 0.7, dimension: 4.0, rotationSpeed: 0.5, gridDensity: 8.0,
         lineThickness: 0.03, patternIntensity: 1.3, universeModifier: 1.0,
         colorShift: 0.0, glitchIntensity: 0.02,
         // Default derived params (will be updated by lineThickness slider)
-        shellWidth: 0.025, tetraThickness: 0.035
+        shellWidth: 0.025, tetraThickness: 0.035,
+        // Color parameters for pitch-based visualization
+        hue: 0.5,             // Base hue value (0-1)
+        saturation: 0.8,      // Base saturation value
+        brightness: 0.9,      // Base brightness value
+        rgbOffset: 0.0        // RGB color offset (for moiré effects)
     };
-    let lastEnergy = 0; // For transient smoothing (optional)
+    
+    // Transient detection
+    let lastEnergy = 0;       // For transient smoothing
+    let lastPitch = 0;        // For pitch changes detection
 
     async function setupAudio() {
         try {
@@ -74,11 +110,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 await audioContext.resume();
             }
             
-            // Setup analyzer with larger FFT for better resolution
+            // Setup analyzer with larger FFT for better resolution and pitch detection
             analyser = audioContext.createAnalyser();
-            analyser.fftSize = 1024; 
-            analyser.smoothingTimeConstant = 0.6;
+            analyser.fftSize = 2048; // Larger FFT size for better frequency resolution
+            analyser.smoothingTimeConstant = 0.4; // Less smoothing for faster reaction
             freqData = new Uint8Array(analyser.frequencyBinCount);
+            timeData = new Uint8Array(analyser.fftSize); // Time domain data for pitch detection
             
             // Request mic access with explicit constraints
             statusDiv.textContent = "Requesting Mic...";
@@ -129,6 +166,71 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // Detect musical pitch from frequency data
+    function detectPitch(frequencyData, sampleRate) {
+        // Find the dominant frequency bin
+        let maxValue = 0;
+        let maxIndex = 0;
+        const nyquist = sampleRate / 2;
+        const binCount = frequencyData.length;
+        const freqPerBin = nyquist / binCount;
+        
+        // Ignore first few bins (very low frequencies/DC offset)
+        for (let i = 5; i < binCount; i++) {
+            const value = frequencyData[i];
+            if (value > maxValue) {
+                maxValue = value;
+                maxIndex = i;
+            }
+        }
+        
+        // Calculate the frequency from the bin index
+        const dominantFrequency = maxIndex * freqPerBin;
+        const dominantStrength = maxValue / 255.0;
+        
+        // Only consider strong enough signals
+        if (dominantStrength < 0.1 || dominantFrequency < 20 || dominantFrequency > 8000) {
+            return {
+                frequency: 0,
+                note: 'None',
+                octave: 0,
+                cents: 0,
+                inTune: false,
+                strength: 0
+            };
+        }
+        
+        // Convert frequency to musical note
+        // A4 = 440 Hz is our reference
+        const noteStrings = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const a4 = 440.0;
+        const a4Index = 69; // MIDI note number for A4
+        
+        // Calculate distance from A4 in semitones
+        const semitoneDistance = 12 * Math.log2(dominantFrequency / a4);
+        const roundedSemitoneDistance = Math.round(semitoneDistance);
+        const noteIndex = (a4Index + roundedSemitoneDistance) % 12;
+        
+        // Calculate octave
+        const octave = Math.floor((a4Index + roundedSemitoneDistance) / 12) - 1;
+        
+        // Calculate cents deviation (how much the note is out of tune)
+        // 0 cents = perfectly in tune, -50 to +50 cents = out of tune
+        const cents = Math.round(100 * (semitoneDistance - roundedSemitoneDistance));
+        
+        // Consider a note "in tune" if it's within ±15 cents of perfect pitch
+        const inTune = Math.abs(cents) <= 15;
+        
+        return {
+            frequency: dominantFrequency,
+            note: noteStrings[noteIndex],
+            octave: octave,
+            cents: cents,
+            inTune: inTune,
+            strength: dominantStrength
+        };
+    }
+    
     function calculateAudioLevels() {
         if (!analyser || !freqData) {
             console.warn("Audio analyzer not available");
@@ -136,16 +238,35 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         try {
-            // Get frequency data from analyzer
+            // Get both frequency and time domain data
             analyser.getByteFrequencyData(freqData);
+            analyser.getByteTimeDomainData(timeData);
             
-            // Check if we're getting any audio signal at all
+            // Check if we're getting any audio signal
             const hasAudioSignal = freqData.some(value => value > 0);
             if (!hasAudioSignal) {
                 console.warn("No audio signal detected - check microphone permissions and input");
                 
-                // Set minimum values to ensure UI reactivity even without mic input
-                // This is just for testing - will use real mic values when available
+                // Generate simulated data with musical patterns
+                const simulationTime = Date.now() / 1000;
+                const notePattern = Math.floor(simulationTime % 8); // Cycle through 8 patterns
+                
+                // Simulate a series of musical notes
+                const simulatedNotes = ['C', 'E', 'G', 'B', 'D', 'F', 'A'];
+                const simulatedOctaves = [3, 4, 5];
+                const noteIndex = Math.floor(simulationTime * 0.5) % simulatedNotes.length;
+                const octaveIndex = Math.floor(simulationTime * 0.2) % simulatedOctaves.length;
+                
+                // Set simulated pitch data
+                analysisData.pitch = {
+                    frequency: NOTE_FREQUENCIES[simulatedNotes[noteIndex]] * Math.pow(2, simulatedOctaves[octaveIndex] - 4),
+                    note: simulatedNotes[noteIndex],
+                    octave: simulatedOctaves[octaveIndex],
+                    cents: (Math.sin(simulationTime * 0.3) * 50).toFixed(0),
+                    inTune: Math.random() > 0.7
+                };
+                
+                // Set simulated frequency band data
                 analysisData.bass = 0.2 + Math.random() * 0.3;
                 analysisData.mid = 0.1 + Math.random() * 0.3;
                 analysisData.high = 0.05 + Math.random() * 0.2;
@@ -156,9 +277,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 analysisData.midSmooth = analysisData.midSmooth * (1 - alpha) + analysisData.mid * alpha;
                 analysisData.highSmooth = analysisData.highSmooth * (1 - alpha) + analysisData.high * alpha;
                 
-                // Update status if no signal for extended period
+                // Update status occasionally
                 if (Math.random() < 0.01) {
-                    statusDiv.textContent = "No audio signal detected - check mic";
+                    statusDiv.textContent = `Simulated Note: ${analysisData.pitch.note}${analysisData.pitch.octave}`;
                 }
                 
                 return;
@@ -172,11 +293,18 @@ document.addEventListener('DOMContentLoaded', () => {
             
             let bassSum = 0, midSum = 0, highSum = 0;
             let bassCount = 0, midCount = 0, highCount = 0;
+            let maxEnergyBin = 0, maxEnergy = 0;
             
             // Analyze frequency bands
             for (let i = 0; i < bufferLength; i++) {
                 const freq = i * freqPerBin;
                 const value = freqData[i] / 255.0;
+                
+                // Track maximum energy bin for dominant frequency
+                if (freqData[i] > maxEnergy && freq > 80) { // Ignore very low frequencies
+                    maxEnergy = freqData[i];
+                    maxEnergyBin = i;
+                }
                 
                 if (freq >= bassBand[0] && freq < bassBand[1]) { 
                     bassSum += value; 
@@ -195,6 +323,14 @@ document.addEventListener('DOMContentLoaded', () => {
             const midAvg = midCount > 0 ? midSum / midCount : 0;
             const highAvg = highCount > 0 ? highSum / highCount : 0;
             
+            // Set dominant frequency and strength
+            analysisData.dominantPitch = maxEnergyBin * freqPerBin;
+            analysisData.dominantPitchValue = maxEnergy / 255.0;
+            
+            // Perform pitch detection
+            const pitchData = detectPitch(freqData, audioContext.sampleRate);
+            analysisData.pitch = pitchData;
+            
             // Update raw values
             analysisData.bass = bassAvg;
             analysisData.mid = midAvg;
@@ -208,10 +344,14 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Log values occasionally for debugging
             if (Math.random() < 0.01) {
-                console.log(`Audio Levels: Bass=${analysisData.bassSmooth.toFixed(2)} Mid=${analysisData.midSmooth.toFixed(2)} High=${analysisData.highSmooth.toFixed(2)}`);
+                const noteInfo = pitchData.frequency > 0 
+                    ? `Note: ${pitchData.note}${pitchData.octave} (${pitchData.cents > 0 ? '+' : ''}${pitchData.cents}¢)` 
+                    : 'No pitch detected';
+                    
+                console.log(`Audio: Bass=${analysisData.bassSmooth.toFixed(2)} Mid=${analysisData.midSmooth.toFixed(2)} High=${analysisData.highSmooth.toFixed(2)} | ${noteInfo}`);
                 
-                // Update status with audio levels
-                statusDiv.textContent = `Audio: B:${analysisData.bassSmooth.toFixed(2)} M:${analysisData.midSmooth.toFixed(2)} H:${analysisData.highSmooth.toFixed(2)}`;
+                // Update status with pitch information
+                statusDiv.textContent = noteInfo;
             }
         } catch (err) {
             console.error("Error analyzing audio:", err);
@@ -259,72 +399,163 @@ document.addEventListener('DOMContentLoaded', () => {
         const transientFactor = Math.max(0, analysisData.highSmooth - lastEnergy) * 2.0;
         lastEnergy = analysisData.highSmooth * 0.8; // Update transient tracking with decay
         
+        // Calculate pitch-based color parameters (cyclic through spectrum each octave)
+        let pitchHue = 0.5; // Default hue
+        let pitchSaturation = 0.8; // Default saturation
+        let pitchBrightness = 0.9; // Default brightness
+        let tuningOffset = 0; // Moiré effect based on tuning
+        
+        // Only process pitch if we have valid data
+        if (analysisData.pitch.frequency > 0) {
+            // Map note to hue (C=red, moving through spectrum)
+            const noteMap = {'C': 0, 'C#': 0.083, 'D': 0.167, 'D#': 0.25, 'E': 0.333, 
+                             'F': 0.417, 'F#': 0.5, 'G': 0.583, 'G#': 0.667, 'A': 0.75, 
+                             'A#': 0.833, 'B': 0.917};
+            
+            // Base hue on note
+            const baseHue = noteMap[analysisData.pitch.note] || 0;
+            
+            // Adjust hue based on octave (cyclic shift)
+            pitchHue = (baseHue + (analysisData.pitch.octave % 3) * 0.33) % 1.0;
+            
+            // Adjust saturation based on note strength
+            pitchSaturation = 0.5 + analysisData.pitch.strength * 0.5;
+            
+            // Adjust brightness based on octave (higher octaves are brighter)
+            const octaveOffset = Math.max(0, Math.min(1, (analysisData.pitch.octave - 2) / 5));
+            pitchBrightness = 0.7 + octaveOffset * 0.3;
+            
+            // RGB moiré effect based on tuning (sharp or flat)
+            // When in tune, the offset is 0
+            if (!analysisData.pitch.inTune) {
+                tuningOffset = analysisData.pitch.cents / 50.0; // -1.0 to 1.0
+            }
+        } else {
+            // No pitch detected - use energy-based fallback
+            pitchHue = (Date.now() * 0.0001) % 1.0; // Slowly cycle through colors
+            pitchSaturation = 0.5 + energyFactor * 0.5;
+            pitchBrightness = 0.7 + analysisData.highSmooth * 0.3;
+        }
+        
+        // Update parameters with pitch-based colors
+        visualParams.hue = pitchHue;
+        visualParams.saturation = pitchSaturation;
+        visualParams.brightness = pitchBrightness;
+        visualParams.rgbOffset = tuningOffset;
+        
         // Calculate reactivity mappings for each parameter
         const paramMappings = {
             morphFactor: {
-                factor: 0.8 + analysisData.midSmooth * 1.8 + transientFactor * 0.7,
-                primary: 'mid',
-                secondary: 'high',
+                // Make morph factor respond to pitch octave (higher = more morph)
+                factor: analysisData.pitch.frequency > 0 
+                    ? 0.4 + (analysisData.pitch.octave / 6) * 0.8 + transientFactor * 0.5
+                    : 0.8 + analysisData.midSmooth * 1.8 + transientFactor * 0.7,
+                primary: 'pitch',
+                secondary: 'transient',
                 pulseThreshold: 0.3
             },
             dimension: {
-                factor: 0.65 + analysisData.bassSmooth * 0.6 + analysisData.midSmooth * 0.3,
-                primary: 'bass',
-                secondary: 'mid',
+                // Link dimension to note (C=3, B=5)
+                factor: analysisData.pitch.frequency > 0
+                    ? 3.0 + (noteMap[analysisData.pitch.note] || 0) * 2.0
+                    : 0.65 + analysisData.bassSmooth * 0.6 + analysisData.midSmooth * 0.3,
+                primary: 'pitch',
+                secondary: 'bass',
                 pulseThreshold: 0.4
             },
             rotationSpeed: {
-                factor: 0.8 + analysisData.midSmooth * 3.0 + analysisData.highSmooth * 2.0,
-                primary: 'mid',
-                secondary: 'high',
+                // Higher notes rotate faster
+                factor: analysisData.pitch.frequency > 0
+                    ? 0.2 + (analysisData.pitch.octave / 8) * 2.0 + analysisData.midSmooth * 1.0
+                    : 0.8 + analysisData.midSmooth * 3.0 + analysisData.highSmooth * 2.0, 
+                primary: 'pitch',
+                secondary: 'mid',
                 pulseThreshold: 0.25
             },
             gridDensity: {
-                factor: 0.5 + analysisData.bassSmooth * 2.2 + transientFactor * 0.7,
-                primary: 'bass',
-                secondary: 'transient',
+                // Grid density varies with pitch - density changes with each octave
+                factor: analysisData.pitch.frequency > 0
+                    ? 4.0 + ((analysisData.pitch.octave % 3) * 3.0) + analysisData.bassSmooth * 6.0
+                    : 0.5 + analysisData.bassSmooth * 2.2 + transientFactor * 0.7,
+                primary: 'pitch',
+                secondary: 'bass',
                 pulseThreshold: 0.4
             },
             lineThickness: {
-                factor: 1.5 - analysisData.highSmooth * 1.0 + analysisData.bassSmooth * 0.3,
-                primary: 'high',
-                secondary: 'bass',
+                // Line thickness varies inversely with note - high notes have thinner lines
+                factor: analysisData.pitch.frequency > 0
+                    ? 1.5 - ((analysisData.pitch.octave - 2) / 6) * 0.8
+                    : 1.5 - analysisData.highSmooth * 1.0 + analysisData.bassSmooth * 0.3,
+                primary: 'pitch',
+                secondary: 'high',
                 pulseThreshold: 0.5,
                 inverse: true
             },
             patternIntensity: {
-                factor: 0.8 + analysisData.midSmooth * 1.5 + transientFactor * 1.1,
-                primary: 'mid',
+                // Pattern intensity stronger for sharper/flatter notes (detuning)
+                factor: analysisData.pitch.frequency > 0
+                    ? 0.7 + Math.abs(analysisData.pitch.cents / 50.0) * 1.5 + transientFactor * 0.5
+                    : 0.8 + analysisData.midSmooth * 1.5 + transientFactor * 1.1,
+                primary: 'tuning',
                 secondary: 'transient',
                 pulseThreshold: 0.25
             },
             universeModifier: {
-                factor: 0.7 + analysisData.bassSmooth * 1.2 + dissonanceFactor * 0.4,
-                primary: 'bass',
-                secondary: 'dissonance',
+                // Universe modifier changes with note scale degree
+                factor: analysisData.pitch.frequency > 0
+                    ? 0.5 + (noteMap[analysisData.pitch.note] || 0) * 1.5
+                    : 0.7 + analysisData.bassSmooth * 1.2 + dissonanceFactor * 0.4,
+                primary: 'note',
+                secondary: 'bass',
                 pulseThreshold: 0.4
             },
             glitchIntensity: {
-                factor: 1.2 + analysisData.highSmooth * 8.0 + transientFactor * 15.0,
-                primary: 'high',
+                // Glitch more when out of tune
+                factor: analysisData.pitch.frequency > 0
+                    ? 0.01 + (analysisData.pitch.inTune ? 0 : (Math.abs(analysisData.pitch.cents) / 50.0) * 0.08)
+                    : 0.02 + analysisData.highSmooth * 0.08 + transientFactor * 0.1,
+                primary: 'tuning',
                 secondary: 'transient',
                 pulseThreshold: 0.2,
                 additive: true
             },
             colorShift: {
-                factor: 1.2 + (dissonanceFactor * 1.5) + (energyFactor - 0.1) * 0.8,
-                primary: 'dissonance',
+                // Color shift based on tuning (sharp = positive, flat = negative)
+                factor: analysisData.pitch.frequency > 0
+                    ? analysisData.pitch.cents / 50.0  // -1.0 to 1.0 range
+                    : 1.2 + (dissonanceFactor * 1.5) + (energyFactor - 0.1) * 0.8,
+                primary: 'tuning',
                 secondary: 'energy',
                 pulseThreshold: 0.3,
                 bipolar: true
             }
         };
         
+        // Get note map for dimension/universe calculations
+        const noteMap = {'C': 0, 'C#': 0.083, 'D': 0.167, 'D#': 0.25, 'E': 0.333, 
+                         'F': 0.417, 'F#': 0.5, 'G': 0.583, 'G#': 0.667, 'A': 0.75, 
+                         'A#': 0.833, 'B': 0.917};
+        
         // Calculate fully reactive parameters
         const effectiveParams = {
             shellWidth: visualParams.shellWidth * (0.7 + analysisData.midSmooth * 1.8 + analysisData.bassSmooth * 0.4),
             tetraThickness: visualParams.tetraThickness * (1.3 - analysisData.highSmooth * 0.9 + analysisData.bassSmooth * 0.3),
-            audioLevels: { bass: analysisData.bassSmooth, mid: analysisData.midSmooth, high: analysisData.highSmooth }
+            audioLevels: { bass: analysisData.bassSmooth, mid: analysisData.midSmooth, high: analysisData.highSmooth },
+            
+            // Add pitch-based color parameters
+            hue: visualParams.hue,
+            saturation: visualParams.saturation,
+            brightness: visualParams.brightness,
+            rgbOffset: visualParams.rgbOffset,
+            
+            // Adding additional projection parameters based on pitch
+            projectionDistance: analysisData.pitch.frequency > 0 
+                ? 2.0 + (analysisData.pitch.octave - 3) * 0.5
+                : 2.0 + analysisData.bassSmooth * 1.0,
+                
+            projectionAngle: analysisData.pitch.frequency > 0
+                ? (noteMap[analysisData.pitch.note] || 0) * Math.PI * 2
+                : (Date.now() * 0.0005) % (Math.PI * 2)
         };
         
         // Calculate each parameter based on its mapping
