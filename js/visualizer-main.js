@@ -257,19 +257,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 const noteIndex = Math.floor(simulationTime * 0.5) % simulatedNotes.length;
                 const octaveIndex = Math.floor(simulationTime * 0.2) % simulatedOctaves.length;
                 
-                // Set simulated pitch data
+                // Set simulated pitch data - more dynamic with wider octave range
                 analysisData.pitch = {
                     frequency: NOTE_FREQUENCIES[simulatedNotes[noteIndex]] * Math.pow(2, simulatedOctaves[octaveIndex] - 4),
                     note: simulatedNotes[noteIndex],
                     octave: simulatedOctaves[octaveIndex],
                     cents: (Math.sin(simulationTime * 0.3) * 50).toFixed(0),
-                    inTune: Math.random() > 0.7
+                    inTune: Math.random() > 0.7,
+                    strength: 0.8 + Math.random() * 0.2 // High strength for vibrant colors
                 };
                 
-                // Set simulated frequency band data
-                analysisData.bass = 0.2 + Math.random() * 0.3;
-                analysisData.mid = 0.1 + Math.random() * 0.3;
-                analysisData.high = 0.05 + Math.random() * 0.2;
+                // Set simulated frequency band data - more dynamic for testing
+                // Create patterns that emphasize mid-range (human audible) frequencies
+                const pulseRate = Math.sin(simulationTime * 0.8) * 0.5 + 0.5;
+                analysisData.bass = 0.3 + Math.random() * 0.3 + pulseRate * 0.3;
+                analysisData.mid = 0.4 + Math.random() * 0.4 + pulseRate * 0.2;
+                analysisData.high = 0.2 + Math.random() * 0.3 + pulseRate * 0.1;
                 
                 // Apply smoothing
                 const alpha = 0.2;
@@ -415,26 +418,38 @@ document.addEventListener('DOMContentLoaded', () => {
             // Base hue on note
             const baseHue = noteMap[analysisData.pitch.note] || 0;
             
-            // Adjust hue based on octave (cyclic shift)
-            pitchHue = (baseHue + (analysisData.pitch.octave % 3) * 0.33) % 1.0;
+            // Adjust hue based on octave - full spectrum shift for more color variation
+            pitchHue = (baseHue + (analysisData.pitch.octave % 7) * 0.14) % 1.0;
             
-            // Adjust saturation based on note strength
-            pitchSaturation = 0.5 + analysisData.pitch.strength * 0.5;
+            // Adjust saturation to be more vibrant - higher baseline for neon effect
+            pitchSaturation = 0.85 + analysisData.pitch.strength * 0.15;
             
-            // Adjust brightness based on octave (higher octaves are brighter)
-            const octaveOffset = Math.max(0, Math.min(1, (analysisData.pitch.octave - 2) / 5));
-            pitchBrightness = 0.7 + octaveOffset * 0.3;
+            // Adjust brightness based on octave - emphasize neon effect
+            // Most vibrant in human hearing range (octaves 2-7)
+            const humanAudibleRange = Math.max(0.0, 1.0 - Math.abs(analysisData.pitch.octave - 4.5) / 3.0);
+            pitchBrightness = 0.6 + humanAudibleRange * 0.6;
             
             // RGB moiré effect based on tuning (sharp or flat)
-            // When in tune, the offset is 0
+            // Enhanced effect with more dramatic offset for neon chromatic aberration
             if (!analysisData.pitch.inTune) {
-                tuningOffset = analysisData.pitch.cents / 50.0; // -1.0 to 1.0
+                // Increase the effect when further from perfect tuning
+                const intensity = Math.abs(analysisData.pitch.cents) / 50.0; // 0 to 1.0
+                tuningOffset = analysisData.pitch.cents / 50.0 * (1.0 + intensity * 2.0); // Amplified effect
+            } else {
+                // Small random variation even when in tune for visual interest
+                tuningOffset = (Math.random() * 0.04 - 0.02) * analysisData.pitch.strength;
             }
         } else {
-            // No pitch detected - use energy-based fallback
+            // No pitch detected - use energy-based fallback with intense neon colors
             pitchHue = (Date.now() * 0.0001) % 1.0; // Slowly cycle through colors
-            pitchSaturation = 0.5 + energyFactor * 0.5;
-            pitchBrightness = 0.7 + analysisData.highSmooth * 0.3;
+            
+            // Higher saturation baseline for neon effect
+            pitchSaturation = 0.9 + energyFactor * 0.1;
+            
+            // Reduce brightness at extreme frequencies (outside human range)
+            // Maximum brightness in mid-frequency response
+            const midEnergyFactor = (analysisData.midSmooth / (analysisData.bassSmooth + analysisData.highSmooth + 0.01));
+            pitchBrightness = 0.5 + midEnergyFactor * 0.7 + analysisData.highSmooth * 0.3;
         }
         
         // Update parameters with pitch-based colors
