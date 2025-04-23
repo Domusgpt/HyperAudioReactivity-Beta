@@ -785,141 +785,174 @@ document.addEventListener('DOMContentLoaded', () => {
         console.log("Collapsible controls initialized");
     }
     
-    // Setup touch controls
+    // Setup direct touch/mouse parameter controls
     function setupTouchControls() {
-        const touchControls = {
-            rotation: document.getElementById('touchRotation'),
-            dimension: document.getElementById('touchDimension'),
-            pattern: document.getElementById('touchPattern'),
-            color: document.getElementById('touchColor')
-        };
+        const canvas = document.getElementById('hypercube-canvas');
+        const touchIndicator = document.getElementById('touchIndicator');
+        const paramInfo = document.getElementById('parameterInfo');
+        const paramXValue = document.getElementById('paramXValue');
+        const paramYValue = document.getElementById('paramYValue');
         
-        const overlay = document.getElementById('parameterOverlay');
-        const overlayTitle = document.getElementById('overlayTitle');
-        const overlaySlider = document.getElementById('overlaySlider');
-        
-        if (!overlay || !overlayTitle || !overlaySlider) {
-            console.warn("Parameter overlay elements not found");
+        if (!canvas || !touchIndicator || !paramInfo || !paramXValue || !paramYValue) {
+            console.warn("Canvas or touch elements not found");
             return;
         }
         
-        // Parameter configurations for each touch control
-        const parameterConfigs = {
-            rotation: {
-                title: "Rotation Speed",
-                parameter: "rotationSpeed",
-                min: 0,
-                max: 2,
-                step: 0.01,
-                initialValue: visualParams.rotationSpeed
-            },
-            dimension: {
-                title: "Dimension",
-                parameter: "dimension",
-                min: 3,
-                max: 5,
-                step: 0.01,
-                initialValue: visualParams.dimension
-            },
-            pattern: {
-                title: "Pattern Intensity",
-                parameter: "patternIntensity",
-                min: 0,
-                max: 2,
-                step: 0.01,
-                initialValue: visualParams.patternIntensity
-            },
-            color: {
-                title: "Color Shift",
-                parameter: "colorShift",
-                min: -1,
-                max: 1,
-                step: 0.01,
-                initialValue: visualParams.colorShift
-            }
+        // Parameter mapping for X and Y axes
+        const xAxisParameter = {
+            name: "dimension",
+            label: "Dimension",
+            min: 3,
+            max: 5,
+            step: 0.01
         };
         
-        // Active parameter being adjusted
-        let activeParameter = null;
+        const yAxisParameter = {
+            name: "morphFactor",
+            label: "Morph",
+            min: 0,
+            max: 1.5,
+            step: 0.01
+        };
         
-        // Handle touch start on controls
-        Object.keys(touchControls).forEach(key => {
-            const control = touchControls[key];
-            if (!control) return;
+        // Update parameter info display
+        paramXValue.textContent = xAxisParameter.label;
+        paramYValue.textContent = yAxisParameter.label;
+        
+        // Interaction state
+        let isInteracting = false;
+        
+        // Function to handle parameter updates based on canvas coordinates
+        function updateParameters(x, y) {
+            // Get canvas dimensions
+            const rect = canvas.getBoundingClientRect();
+            const canvasWidth = rect.width;
+            const canvasHeight = rect.height;
             
-            control.addEventListener('click', () => {
-                // Set the active parameter
-                activeParameter = key;
-                
-                // Configure overlay for this parameter
-                const config = parameterConfigs[key];
-                overlayTitle.textContent = config.title;
-                
-                // Configure slider
-                overlaySlider.min = config.min;
-                overlaySlider.max = config.max;
-                overlaySlider.step = config.step;
-                overlaySlider.value = visualParams[config.parameter];
-                
-                // Calculate slider fill color initially
-                const progress = (overlaySlider.value - overlaySlider.min) / (overlaySlider.max - overlaySlider.min);
-                overlaySlider.closest('.parameter-overlay-slider').style.setProperty('--slider-progress', progress.toFixed(3));
-                
-                // Show overlay
-                overlay.classList.add('visible');
+            // Calculate normalized position (0-1)
+            const normalizedX = Math.max(0, Math.min(1, x / canvasWidth));
+            const normalizedY = 1 - Math.max(0, Math.min(1, y / canvasHeight)); // Invert Y axis
+            
+            // Map to parameter ranges
+            const xValue = xAxisParameter.min + normalizedX * (xAxisParameter.max - xAxisParameter.min);
+            const yValue = yAxisParameter.min + normalizedY * (yAxisParameter.max - yAxisParameter.min);
+            
+            // Update visualizer parameters
+            visualParams[xAxisParameter.name] = xValue;
+            visualParams[yAxisParameter.name] = yValue;
+            
+            // Update the core visualizer
+            mainVisualizerCore?.updateParameters({
+                [xAxisParameter.name]: xValue,
+                [yAxisParameter.name]: yValue
             });
-        });
+            
+            // Update corresponding sliders and displays
+            updateSlider(xAxisParameter.name, xValue);
+            updateSlider(yAxisParameter.name, yValue);
+            
+            // Position the touch indicator
+            touchIndicator.style.left = `${x}px`;
+            touchIndicator.style.top = `${y}px`;
+            
+            // Format parameter values for display
+            const xValueFormatted = formatValue(xValue, xAxisParameter.step);
+            const yValueFormatted = formatValue(yValue, yAxisParameter.step);
+            
+            // Update parameter info with current values
+            paramXValue.textContent = `${xAxisParameter.label}: ${xValueFormatted}`;
+            paramYValue.textContent = `${yAxisParameter.label}: ${yValueFormatted}`;
+        }
         
-        // Handle slider input
-        overlaySlider.addEventListener('input', () => {
-            if (!activeParameter) return;
+        // Format numeric value according to step precision
+        function formatValue(value, step) {
+            const decimals = step.toString().includes('.') ? step.toString().split('.')[1].length : 0;
+            return value.toFixed(decimals);
+        }
+        
+        // Update a slider and its display
+        function updateSlider(paramName, value) {
+            const slider = document.getElementById(paramName);
+            const display = document.getElementById(`${paramName}-value`);
             
-            const config = parameterConfigs[activeParameter];
-            const value = parseFloat(overlaySlider.value);
-            
-            // Update the visualizer parameter
-            visualParams[config.parameter] = value;
-            
-            // Update the regular slider if it exists
-            const regularSlider = document.getElementById(config.parameter);
-            const valueDisplay = document.getElementById(`${config.parameter}-value`);
-            
-            if (regularSlider) {
-                regularSlider.value = value;
+            if (slider) {
+                slider.value = value;
                 
-                // Calculate slider fill
-                const progress = (value - config.min) / (config.max - config.min);
-                const wrapper = regularSlider.closest('.slider-wrapper');
+                // Update slider track fill
+                const min = parseFloat(slider.min);
+                const max = parseFloat(slider.max);
+                const progress = (value - min) / (max - min);
+                const wrapper = slider.closest('.slider-wrapper');
                 if (wrapper) {
                     wrapper.style.setProperty('--slider-progress', progress.toFixed(3));
                 }
                 
                 // Update value display
-                if (valueDisplay) {
-                    const decimals = config.step.toString().includes('.') ? config.step.toString().split('.')[1].length : 0;
-                    valueDisplay.textContent = value.toFixed(decimals);
+                if (display) {
+                    const step = slider.step;
+                    const decimals = step.includes('.') ? step.split('.')[1].length : 0;
+                    display.textContent = value.toFixed(decimals);
                 }
             }
-            
-            // Calculate overlay slider fill
-            const progress = (value - config.min) / (config.max - config.min);
-            overlaySlider.style.setProperty('--slider-progress', progress.toFixed(3));
-            
-            // Update the visualizer
-            mainVisualizerCore?.updateParameters({ [config.parameter]: value });
-        });
+        }
         
-        // Close overlay when clicking outside
-        document.addEventListener('click', (e) => {
-            if (overlay.classList.contains('visible') && 
-                !overlay.contains(e.target) && 
-                !Object.values(touchControls).some(control => control && control.contains(e.target))) {
-                overlay.classList.remove('visible');
-                activeParameter = null;
-            }
-        });
+        // Mouse/touch event handlers
+        function handleStart(e) {
+            isInteracting = true;
+            touchIndicator.classList.add('active');
+            
+            // Get coordinates
+            const clientX = e.clientX || (e.touches ? e.touches[0].clientX : 0);
+            const clientY = e.clientY || (e.touches ? e.touches[0].clientY : 0);
+            
+            // Get position relative to canvas
+            const rect = canvas.getBoundingClientRect();
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            
+            // Update parameters and visuals
+            updateParameters(x, y);
+            
+            // Prevent default to avoid scrolling on touch devices
+            e.preventDefault();
+        }
         
-        console.log("Touch controls initialized");
+        function handleMove(e) {
+            if (!isInteracting) return;
+            
+            // Get coordinates
+            const clientX = e.clientX || (e.touches ? e.touches[0].clientX : 0);
+            const clientY = e.clientY || (e.touches ? e.touches[0].clientY : 0);
+            
+            // Get position relative to canvas
+            const rect = canvas.getBoundingClientRect();
+            const x = clientX - rect.left;
+            const y = clientY - rect.top;
+            
+            // Update parameters and visuals
+            updateParameters(x, y);
+            
+            // Prevent default to avoid scrolling on touch devices
+            e.preventDefault();
+        }
+        
+        function handleEnd() {
+            isInteracting = false;
+            touchIndicator.classList.remove('active');
+        }
+        
+        // Add event listeners
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('touchstart', handleStart, { passive: false });
+        
+        window.addEventListener('mousemove', handleMove);
+        window.addEventListener('touchmove', handleMove, { passive: false });
+        
+        window.addEventListener('mouseup', handleEnd);
+        window.addEventListener('touchend', handleEnd);
+        window.addEventListener('touchcancel', handleEnd);
+        
+        console.log("Direct touch/mouse parameter controls initialized");
     }
 
     async function initialize() {

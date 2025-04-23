@@ -55,35 +55,13 @@
         <div id="status">Initializing...</div>
         <div class="reactivity-indicator">CLICK FOR MIC ACCESS</div>
         
-        <!-- Touch Controls Container -->
-        <div class="touch-control-container">
-            <div class="touch-control top-left" id="touchRotation">
-                <div class="touch-control-icon">↻</div>
-                <div class="touch-control-label">Rotate</div>
-            </div>
-            
-            <div class="touch-control top-right" id="touchDimension">
-                <div class="touch-control-icon">4D</div>
-                <div class="touch-control-label">Dimension</div>
-            </div>
-            
-            <div class="touch-control bottom-left" id="touchPattern">
-                <div class="touch-control-icon">◉</div>
-                <div class="touch-control-label">Pattern</div>
-            </div>
-            
-            <div class="touch-control bottom-right" id="touchColor">
-                <div class="touch-control-icon">◈</div>
-                <div class="touch-control-label">Color</div>
-            </div>
-        </div>
+        <!-- Visual Touch Indicator -->
+        <div class="touch-indicator" id="touchIndicator"></div>
         
-        <!-- Parameter Overlay -->
-        <div class="parameter-overlay" id="parameterOverlay">
-            <div class="parameter-overlay-title" id="overlayTitle">Parameter</div>
-            <div class="parameter-overlay-slider">
-                <input type="range" class="styled-slider parameter-overlay-slider" id="overlaySlider" min="0" max="1" step="0.01" value="0.5">
-            </div>
+        <!-- Parameter Info Overlay -->
+        <div class="parameter-info" id="parameterInfo">
+            <div class="parameter-info-x">X: <span id="paramXValue">Dimension</span></div>
+            <div class="parameter-info-y">Y: <span id="paramYValue">Morph</span></div>
         </div>
     </div>
 
