@@ -50,68 +50,108 @@
     </style>
 </head>
 <body>
-    <div class="canvas-container">
+    <div class="canvas-container glass-effect">
         <canvas id="hypercube-canvas"></canvas>
         <div id="status">Initializing...</div>
         <div class="reactivity-indicator">CLICK FOR MIC ACCESS</div>
+        
+        <!-- Touch Controls Container -->
+        <div class="touch-control-container">
+            <div class="touch-control top-left" id="touchRotation">
+                <div class="touch-control-icon">↻</div>
+                <div class="touch-control-label">Rotate</div>
+            </div>
+            
+            <div class="touch-control top-right" id="touchDimension">
+                <div class="touch-control-icon">4D</div>
+                <div class="touch-control-label">Dimension</div>
+            </div>
+            
+            <div class="touch-control bottom-left" id="touchPattern">
+                <div class="touch-control-icon">◉</div>
+                <div class="touch-control-label">Pattern</div>
+            </div>
+            
+            <div class="touch-control bottom-right" id="touchColor">
+                <div class="touch-control-icon">◈</div>
+                <div class="touch-control-label">Color</div>
+            </div>
+        </div>
+        
+        <!-- Parameter Overlay -->
+        <div class="parameter-overlay" id="parameterOverlay">
+            <div class="parameter-overlay-title" id="overlayTitle">Parameter</div>
+            <div class="parameter-overlay-slider">
+                <input type="range" class="styled-slider parameter-overlay-slider" id="overlaySlider" min="0" max="1" step="0.01" value="0.5">
+            </div>
+        </div>
     </div>
 
     <div class="controls-container">
-        <div class="selectors">
-             <div>
-                <label for="geometryType">Geometry:</label>
-                <select id="geometryType">
-                    <option value="hypercube" selected>Hypercube</option>
-                    <option value="hypersphere">Hypersphere</option>
-                    <option value="hypertetrahedron">Hypertetrahedron</option>
-                </select>
-             </div>
-             <div>
-                <label for="projectionMethod">Projection:</label>
-                <select id="projectionMethod">
-                    <option value="perspective" selected>Perspective</option>
-                    <option value="orthographic">Orthographic</option>
-                    <option value="stereographic">Stereographic</option>
-                </select>
-             </div>
+        <div class="controls-header">
+            <div class="title">HyperAV Controls</div>
+            <button class="collapse-toggle" id="collapseToggle">
+                <span class="toggle-icon">▲</span>
+            </button>
         </div>
+        
+        <div class="controls-content" id="controlsContent">
+            <div class="selectors">
+                <div>
+                    <label for="geometryType">Geometry:</label>
+                    <select id="geometryType">
+                        <option value="hypercube" selected>Hypercube</option>
+                        <option value="hypersphere">Hypersphere</option>
+                        <option value="hypertetrahedron">Hypertetrahedron</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="projectionMethod">Projection:</label>
+                    <select id="projectionMethod">
+                        <option value="perspective" selected>Perspective</option>
+                        <option value="orthographic">Orthographic</option>
+                        <option value="stereographic">Stereographic</option>
+                    </select>
+                </div>
+            </div>
 
-        <div class="controls-grid">
-            <div class="control-group" data-audio-band="mid">
-                <label for="morphFactor">Morph Factor</label>
-                <div class="control-row"><div class="slider-wrapper"><input type="range" min="0" max="1.5" step="0.01" value="0.7" class="styled-slider" id="morphFactor"></div><span class="value-display" id="morphFactor-value">0.70</span></div>
-            </div>
-            <div class="control-group" data-audio-band="bass">
-                <label for="dimension">Dimension (3D ↔ 4D)</label>
-                <div class="control-row"><div class="slider-wrapper"><input type="range" min="3" max="5" step="0.01" value="4.0" class="styled-slider" id="dimension"></div><span class="value-display" id="dimension-value">4.00</span></div>
-            </div>
-             <div class="control-group" data-audio-band="mid">
-                <label for="rotationSpeed">Rotation Speed</label>
-                <div class="control-row"><div class="slider-wrapper"><input type="range" min="0" max="2" step="0.01" value="0.5" class="styled-slider" id="rotationSpeed"></div><span class="value-display" id="rotationSpeed-value">0.50</span></div>
-            </div>
-            <div class="control-group" data-audio-band="bass">
-                <label for="gridDensity">Grid Density</label>
-                <div class="control-row"><div class="slider-wrapper"><input type="range" min="2" max="25" step="0.1" value="8.0" class="styled-slider" id="gridDensity"></div><span class="value-display" id="gridDensity-value">8.0</span></div>
-            </div>
-            <div class="control-group" data-audio-band="high">
-                <label for="lineThickness">Line Thickness</label>
-                <div class="control-row"><div class="slider-wrapper"><input type="range" min="0.005" max="0.1" step="0.001" value="0.03" class="styled-slider" id="lineThickness"></div><span class="value-display" id="lineThickness-value">0.030</span></div>
-            </div>
-             <div class="control-group" data-audio-band="mid">
-                <label for="patternIntensity">Pattern Intensity</label>
-                <div class="control-row"><div class="slider-wrapper"><input type="range" min="0" max="2" step="0.01" value="1.3" class="styled-slider" id="patternIntensity"></div><span class="value-display" id="patternIntensity-value">1.30</span></div>
-            </div>
-            <div class="control-group" data-audio-band="bass">
-                <label for="universeModifier">Universe Modifier</label>
-                <div class="control-row"><div class="slider-wrapper"><input type="range" min="0.5" max="2.0" step="0.01" value="1.0" class="styled-slider" id="universeModifier"></div><span class="value-display" id="universeModifier-value">1.00</span></div>
-            </div>
-            <div class="control-group" data-audio-band="dissonance">
-                <label for="colorShift">Color Shift</label>
-                <div class="control-row"><div class="slider-wrapper"><input type="range" min="-1" max="1" step="0.01" value="0.0" class="styled-slider" id="colorShift"></div><span class="value-display" id="colorShift-value">0.00</span></div>
-            </div>
-             <div class="control-group" data-audio-band="high">
-                <label for="glitchIntensity">Glitch Intensity</label>
-                <div class="control-row"><div class="slider-wrapper"><input type="range" min="0" max="0.1" step="0.001" value="0.02" class="styled-slider" id="glitchIntensity"></div><span class="value-display" id="glitchIntensity-value">0.020</span></div>
+            <div class="controls-grid">
+                <div class="control-group" data-audio-band="mid">
+                    <label for="morphFactor">Morph Factor</label>
+                    <div class="control-row"><div class="slider-wrapper"><input type="range" min="0" max="1.5" step="0.01" value="0.7" class="styled-slider" id="morphFactor"></div><span class="value-display" id="morphFactor-value">0.70</span></div>
+                </div>
+                <div class="control-group" data-audio-band="bass">
+                    <label for="dimension">Dimension (3D ↔ 4D)</label>
+                    <div class="control-row"><div class="slider-wrapper"><input type="range" min="3" max="5" step="0.01" value="4.0" class="styled-slider" id="dimension"></div><span class="value-display" id="dimension-value">4.00</span></div>
+                </div>
+                <div class="control-group" data-audio-band="mid">
+                    <label for="rotationSpeed">Rotation Speed</label>
+                    <div class="control-row"><div class="slider-wrapper"><input type="range" min="0" max="2" step="0.01" value="0.5" class="styled-slider" id="rotationSpeed"></div><span class="value-display" id="rotationSpeed-value">0.50</span></div>
+                </div>
+                <div class="control-group" data-audio-band="bass">
+                    <label for="gridDensity">Grid Density</label>
+                    <div class="control-row"><div class="slider-wrapper"><input type="range" min="2" max="25" step="0.1" value="8.0" class="styled-slider" id="gridDensity"></div><span class="value-display" id="gridDensity-value">8.0</span></div>
+                </div>
+                <div class="control-group" data-audio-band="high">
+                    <label for="lineThickness">Line Thickness</label>
+                    <div class="control-row"><div class="slider-wrapper"><input type="range" min="0.005" max="0.1" step="0.001" value="0.03" class="styled-slider" id="lineThickness"></div><span class="value-display" id="lineThickness-value">0.030</span></div>
+                </div>
+                <div class="control-group" data-audio-band="mid">
+                    <label for="patternIntensity">Pattern Intensity</label>
+                    <div class="control-row"><div class="slider-wrapper"><input type="range" min="0" max="2" step="0.01" value="1.3" class="styled-slider" id="patternIntensity"></div><span class="value-display" id="patternIntensity-value">1.30</span></div>
+                </div>
+                <div class="control-group" data-audio-band="bass">
+                    <label for="universeModifier">Universe Modifier</label>
+                    <div class="control-row"><div class="slider-wrapper"><input type="range" min="0.5" max="2.0" step="0.01" value="1.0" class="styled-slider" id="universeModifier"></div><span class="value-display" id="universeModifier-value">1.00</span></div>
+                </div>
+                <div class="control-group" data-audio-band="dissonance">
+                    <label for="colorShift">Color Shift</label>
+                    <div class="control-row"><div class="slider-wrapper"><input type="range" min="-1" max="1" step="0.01" value="0.0" class="styled-slider" id="colorShift"></div><span class="value-display" id="colorShift-value">0.00</span></div>
+                </div>
+                <div class="control-group" data-audio-band="high">
+                    <label for="glitchIntensity">Glitch Intensity</label>
+                    <div class="control-row"><div class="slider-wrapper"><input type="range" min="0" max="0.1" step="0.001" value="0.02" class="styled-slider" id="glitchIntensity"></div><span class="value-display" id="glitchIntensity-value">0.020</span></div>
+                </div>
             </div>
         </div>
     </div>

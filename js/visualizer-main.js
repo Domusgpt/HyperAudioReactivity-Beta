@@ -1,5 +1,5 @@
 /**
- * visualizer-main.js - v1.5
+ * visualizer-main.js - v1.6
  * Standalone script for HyperAudioVisualizer (Web Audio Input).
  * - Enhanced audio reactivity: Audio levels modulate visual parameters.
  * - Added dissonance proxy affecting color shift.
@@ -7,6 +7,9 @@
  * - Improved browser compatibility for microphone access
  * - Added fallback visualization with patterned random data
  * - Optimized audio analysis parameters for better visual performance
+ * - Added collapsible controls menu
+ * - Implemented touch-based parameter controls on the visualization
+ * - Added glassmorphism and magnification effects
  */
 import HypercubeCore from '../core/HypercubeCore.js';
 import ShaderManager from '../core/ShaderManager.js';
@@ -742,6 +745,183 @@ document.addEventListener('DOMContentLoaded', () => {
         }, 40); // 25fps random updates
     }
 
+    // Setup collapsible controls
+    function setupCollapsibleControls() {
+        const controlsContainer = document.querySelector('.controls-container');
+        const collapseToggle = document.getElementById('collapseToggle');
+        const controlsContent = document.getElementById('controlsContent');
+        
+        if (!controlsContainer || !collapseToggle || !controlsContent) {
+            console.warn("Collapsible controls elements not found");
+            return;
+        }
+        
+        // Store the content height for animation
+        let contentHeight = controlsContent.scrollHeight;
+        
+        // Set initial height to ensure smooth animation
+        controlsContent.style.maxHeight = contentHeight + 'px';
+        
+        // Toggle collapse state
+        collapseToggle.addEventListener('click', () => {
+            controlsContainer.classList.toggle('collapsed');
+            
+            // Update content height in case it changed
+            if (!controlsContainer.classList.contains('collapsed')) {
+                // Get the current scroll height and use it
+                contentHeight = controlsContent.scrollHeight;
+                controlsContent.style.maxHeight = contentHeight + 'px';
+            }
+        });
+        
+        // Update content height on window resize
+        window.addEventListener('resize', () => {
+            if (!controlsContainer.classList.contains('collapsed')) {
+                contentHeight = controlsContent.scrollHeight;
+                controlsContent.style.maxHeight = contentHeight + 'px';
+            }
+        });
+        
+        console.log("Collapsible controls initialized");
+    }
+    
+    // Setup touch controls
+    function setupTouchControls() {
+        const touchControls = {
+            rotation: document.getElementById('touchRotation'),
+            dimension: document.getElementById('touchDimension'),
+            pattern: document.getElementById('touchPattern'),
+            color: document.getElementById('touchColor')
+        };
+        
+        const overlay = document.getElementById('parameterOverlay');
+        const overlayTitle = document.getElementById('overlayTitle');
+        const overlaySlider = document.getElementById('overlaySlider');
+        
+        if (!overlay || !overlayTitle || !overlaySlider) {
+            console.warn("Parameter overlay elements not found");
+            return;
+        }
+        
+        // Parameter configurations for each touch control
+        const parameterConfigs = {
+            rotation: {
+                title: "Rotation Speed",
+                parameter: "rotationSpeed",
+                min: 0,
+                max: 2,
+                step: 0.01,
+                initialValue: visualParams.rotationSpeed
+            },
+            dimension: {
+                title: "Dimension",
+                parameter: "dimension",
+                min: 3,
+                max: 5,
+                step: 0.01,
+                initialValue: visualParams.dimension
+            },
+            pattern: {
+                title: "Pattern Intensity",
+                parameter: "patternIntensity",
+                min: 0,
+                max: 2,
+                step: 0.01,
+                initialValue: visualParams.patternIntensity
+            },
+            color: {
+                title: "Color Shift",
+                parameter: "colorShift",
+                min: -1,
+                max: 1,
+                step: 0.01,
+                initialValue: visualParams.colorShift
+            }
+        };
+        
+        // Active parameter being adjusted
+        let activeParameter = null;
+        
+        // Handle touch start on controls
+        Object.keys(touchControls).forEach(key => {
+            const control = touchControls[key];
+            if (!control) return;
+            
+            control.addEventListener('click', () => {
+                // Set the active parameter
+                activeParameter = key;
+                
+                // Configure overlay for this parameter
+                const config = parameterConfigs[key];
+                overlayTitle.textContent = config.title;
+                
+                // Configure slider
+                overlaySlider.min = config.min;
+                overlaySlider.max = config.max;
+                overlaySlider.step = config.step;
+                overlaySlider.value = visualParams[config.parameter];
+                
+                // Calculate slider fill color initially
+                const progress = (overlaySlider.value - overlaySlider.min) / (overlaySlider.max - overlaySlider.min);
+                overlaySlider.closest('.parameter-overlay-slider').style.setProperty('--slider-progress', progress.toFixed(3));
+                
+                // Show overlay
+                overlay.classList.add('visible');
+            });
+        });
+        
+        // Handle slider input
+        overlaySlider.addEventListener('input', () => {
+            if (!activeParameter) return;
+            
+            const config = parameterConfigs[activeParameter];
+            const value = parseFloat(overlaySlider.value);
+            
+            // Update the visualizer parameter
+            visualParams[config.parameter] = value;
+            
+            // Update the regular slider if it exists
+            const regularSlider = document.getElementById(config.parameter);
+            const valueDisplay = document.getElementById(`${config.parameter}-value`);
+            
+            if (regularSlider) {
+                regularSlider.value = value;
+                
+                // Calculate slider fill
+                const progress = (value - config.min) / (config.max - config.min);
+                const wrapper = regularSlider.closest('.slider-wrapper');
+                if (wrapper) {
+                    wrapper.style.setProperty('--slider-progress', progress.toFixed(3));
+                }
+                
+                // Update value display
+                if (valueDisplay) {
+                    const decimals = config.step.toString().includes('.') ? config.step.toString().split('.')[1].length : 0;
+                    valueDisplay.textContent = value.toFixed(decimals);
+                }
+            }
+            
+            // Calculate overlay slider fill
+            const progress = (value - config.min) / (config.max - config.min);
+            overlaySlider.style.setProperty('--slider-progress', progress.toFixed(3));
+            
+            // Update the visualizer
+            mainVisualizerCore?.updateParameters({ [config.parameter]: value });
+        });
+        
+        // Close overlay when clicking outside
+        document.addEventListener('click', (e) => {
+            if (overlay.classList.contains('visible') && 
+                !overlay.contains(e.target) && 
+                !Object.values(touchControls).some(control => control && control.contains(e.target))) {
+                overlay.classList.remove('visible');
+                activeParameter = null;
+            }
+        });
+        
+        console.log("Touch controls initialized");
+    }
+
     async function initialize() {
         try {
             // Set status
@@ -767,6 +947,13 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Setup UI controls
             setupControls();
+            setupCollapsibleControls();
+            setupTouchControls();
+            
+            // Apply glassmorphism effects to elements
+            document.querySelectorAll('.selectors select, #status, .reactivity-indicator').forEach(el => {
+                el.classList.add('glass-effect', 'magnify-effect');
+            });
             
             // Create main visualizer core with error callback
             statusDiv.textContent = "Creating visualization core...";
